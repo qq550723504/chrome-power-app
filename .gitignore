@@ -57,6 +57,8 @@ thumbs.db
 # Editor-based Rest Client
 .idea/httpRequests
 /.idea/csv-plugin.xml
-packages/main/src/native-addon/build
+packages/main/src/native-addon/build/*
+--fix
+
 Chrome-bin
 Chrome-bin.zip
