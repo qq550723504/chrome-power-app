@@ -36,8 +36,8 @@ export default function Start() {
       n: 'FB',
     },
     {
-      name: 'Detectme',
-      n: 'Dm',
+      name: 'Temu',
+      n: 'Temu',
     },
     {
       name: 'Whoer',

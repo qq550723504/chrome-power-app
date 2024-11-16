@@ -36,14 +36,21 @@ const getRealIP = async (proxy: DB.Proxy) => {
       });
       return url.includes('ip-api.com') ? data.query : data.ip;
     } catch (error) {
+      const axiosError = error as AxiosError;
+      logger.error(`IP 请求失败: ${url}`, {
+        status: axiosError.response?.status,
+        statusText: axiosError.response?.statusText,
+        data: axiosError.response?.data,
+        headers: axiosError.response?.headers,
+      });
       throw new Error(`Failed to fetch IP from ${url}: ${error}`);
     }
   };
 
   try {
     return await Promise.race([
-      makeRequest('http://ip-api.com/json/?fields=61439', requestProxy),
-      makeRequest('https://api64.ipify.org?format=json', requestProxy),
+      makeRequest('http://ip-api.com/json/?fields=61439', requestProxy),  // 使用 HTTP 版本
+      makeRequest('http://icanhazip.com', requestProxy),   
     ]);
   } catch (error) {
     bridgeMessageToUI({
@@ -130,7 +137,18 @@ export async function testProxy(proxy: DB.Proxy) {
     agent = agentInfo.agent;
   } else {
     requestProxy = getRequestProxy(proxy.proxy!, proxy.proxy_type!);
+    logger.info('requestProxy', requestProxy);
   }
+  const instance = axios.create({
+    timeout: 5000,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    // 配置代理
+    proxy: false, // 禁用默认代理配置
+    httpsAgent: agent,
+    httpAgent: agent,
+  });
   try {
     const ipInfo = await getProxyInfo(proxy);
     result.ipInfo = ipInfo || {};
@@ -140,12 +158,7 @@ export async function testProxy(proxy: DB.Proxy) {
   for (const pin of PIN_URL) {
     const startTime = Date.now();
     try {
-      const response = await axios.get(pin.url, {
-        proxy: proxy.proxy && proxy.proxy_type?.toLocaleLowerCase() !== 'socks5' ? requestProxy : undefined,
-        timeout: 5_000,
-        httpAgent: agent,
-        httpsAgent: agent,
-      });
+      const response = await instance.get(pin.url);
       const endTime = Date.now();
       const elapsedTime = endTime - startTime; // Calculate the time taken for the request
       if (response.status === 200) {
@@ -163,7 +176,13 @@ export async function testProxy(proxy: DB.Proxy) {
         });
       }
     } catch (error) {
-      logger.error(`ping ${pin.name} failed:`, (error as AxiosError)?.message);
+      const axiosError = error as AxiosError;
+      console.log('$$$axiosError', axiosError);
+      logger.error(`ping ${pin.name} failed:`, {
+        message: axiosError.message,
+        code: axiosError.code,
+        config: axiosError.config,
+      });
       const endTime = Date.now();
       const elapsedTime = endTime - startTime;
       result.connectivity.push({

@@ -51,5 +51,6 @@ export const COUNTRY_LANG_MAP: Record<string, string> = {
  * @returns 语言代码,如果没找到对应关系则返回 en-US
  */
 export const getLangByCountry = (countryCode: string): string => {
+  if (!countryCode) return 'en-US';
   return COUNTRY_LANG_MAP[countryCode.toUpperCase()] || 'en-US';
 };

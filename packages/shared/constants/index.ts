@@ -20,10 +20,10 @@ export const PIN_URL = [
     file: 'https://www.facebook.com/images/fb_icon_325x325.png',
   },
   {
-    name: 'Detectme',
-    n: 'Dm',
-    url: 'https://detectme.net/',
-    file: 'https://detectme.net/logo.svg',
+    name: 'Temu',
+    n: 'Temu',
+    url: 'https://www.temu.com/',
+    file: 'https://aimg.kwcdn.com/upload_aimg/web/c9653751-0a91-46f1-806a-b639dd32931b.png.slim.png',
   },
   {
     name: 'Whoer',
