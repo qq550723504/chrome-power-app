@@ -116,9 +116,9 @@ export const modifyPageInfo = async (windowId: number, page: Page, ipInfo: IP) =
   page.on('framenavigated', async _msg => {
     try {
       const title = await page.title();
-      if (!title.includes('By ChromePower')) {
+      if (!title.includes('By WND')) {
         await page.evaluate(title => {
-          document.title = title + ' By ChromePower';
+          document.title = title + ' By WND';
         }, title);
       }
 
@@ -131,4 +131,44 @@ export const modifyPageInfo = async (windowId: number, page: Page, ipInfo: IP) =
   await page.evaluateOnNewDocument(
     'navigator.mediaDevices.getUserMedia = navigator.webkitGetUserMedia = navigator.mozGetUserMedia = navigator.getUserMedia = webkitRTCPeerConnection = RTCPeerConnection = MediaStreamTrack = undefined;',
   );
+  try { 
+    await page.evaluateOnNewDocument(timeZoneScript(ipInfo.timeZone));
+  } catch (error) {
+    console.error('| Puppeteer | modifyPageInfo | error:', error);
+  }
 };
+
+// 修改时区脚本，使用动态时区
+export const timeZoneScript = (timezone: string) => `
+Object.defineProperty(Intl, 'DateTimeFormat', {
+    get: function() {
+        return function(...args) {
+            return new Date().toLocaleString('en-US', {timeZone: '${timezone}'});
+        }
+    }
+});
+
+const _Date = Date;
+Date = class extends _Date {
+    constructor(...args) {
+        if (args.length === 0) {
+            super();
+        } else {
+            super(...args);
+        }
+    }
+}
+
+// 获取时区偏移
+const getTimezoneOffset = () => {
+    const date = new Date();
+    const timeString = date.toLocaleString('en-US', { timeZone: '${timezone}' });
+    const localTime = new Date(timeString);
+    const utcTime = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
+    return (localTime - utcTime) / (3600 * 1000);
+};
+
+const offset = getTimezoneOffset();
+Date.prototype = _Date.prototype;
+Date.now = () => new _Date().getTime() + offset * 3600 * 1000;
+`;

@@ -1,29 +1,32 @@
-import {join} from 'path';
-import {ProxyDB} from '../db/proxy';
-import {WindowDB} from '../db/window';
+import { join } from 'path';
+import { ProxyDB } from '../db/proxy';
+import { WindowDB } from '../db/window';
 // import {getChromePath} from './device';
-import {BrowserWindow} from 'electron';
+import { BrowserWindow } from 'electron';
 import puppeteer from 'puppeteer';
-import {execSync, spawn} from 'child_process';
+import { execSync, spawn } from 'child_process';
 import * as portscanner from 'portscanner';
-import {sleep} from '../utils/sleep';
+import { sleep } from '../utils/sleep';
 import SocksServer from '../proxy-server/socks-server';
-import type {DB} from '../../../shared/types/db';
-import type {IP} from '../../../shared/types/ip';
-import {type IncomingMessage, type Server, type ServerResponse} from 'http';
-import {createLogger} from '../../../shared/utils/logger';
-import {WINDOW_LOGGER_LABEL} from '../constants';
-import {db} from '../db';
-import {getProxyInfo} from './prepare';
+import type { DB } from '../../../shared/types/db';
+import type { IP } from '../../../shared/types/ip';
+import { type IncomingMessage, type Server, type ServerResponse } from 'http';
+import { createLogger } from '../../../shared/utils/logger';
+import { WINDOW_LOGGER_LABEL } from '../constants';
+import { db } from '../db';
+import { getProxyInfo } from './prepare';
 import * as ProxyChain from 'proxy-chain';
 import api from '../../../shared/api/api';
-import {getSettings} from '../utils/get-settings';
-import {getPort} from '../server/index';
-import {randomFingerprint} from '../services/window-service';
-import {bridgeMessageToUI, getClientPort, getMainWindow} from '../mainWindow';
-import {Mutex} from 'async-mutex';
-import {presetCookie} from '../puppeteer/helpers';
-import {modifyPageInfo} from '../puppeteer/helpers';
+import { getSettings } from '../utils/get-settings';
+import { getPort } from '../server/index';
+//import { randomFingerprint } from '../services/window-service';
+import { bridgeMessageToUI, getClientPort, getMainWindow } from '../mainWindow';
+import { Mutex } from 'async-mutex';
+import { presetCookie, timeZoneScript } from '../puppeteer/helpers';
+import { modifyPageInfo } from '../puppeteer/helpers';
+import { checkTimeZoneLeak } from './check';
+import { getLangByCountry } from '../utils/language';
+import { generateRandomFingerprint } from './generate';
 const mutex = new Mutex();
 
 const logger = createLogger(WINDOW_LOGGER_LABEL);
@@ -34,12 +37,12 @@ async function connectBrowser(
   port: number,
   ipInfo: IP,
   windowId: number,
-  openStartPage: boolean = true,
+  openStartPage: boolean = false,
 ) {
   const windowData = await WindowDB.getById(windowId);
   const settings = getSettings();
   const browserURL = `http://${HOST}:${port}`;
-  const {data} = await api.get(browserURL + '/json/version');
+  const { data } = await api.get(browserURL + '/json/version');
   if (data.webSocketDebuggerUrl) {
     const browser = await puppeteer.connect({
       browserWSEndpoint: data.webSocketDebuggerUrl,
@@ -56,34 +59,42 @@ async function connectBrowser(
     });
 
     browser.on('targetcreated', async target => {
-      const newPage = await target.page();
-      if (newPage) {
-        await newPage.waitForNavigation({waitUntil: 'networkidle0'});
-        if (!settings.useLocalChrome) {
-          await modifyPageInfo(windowId, newPage, ipInfo);
+      if (target.type() === 'page') {
+        const newPage = await target.page();
+        if (newPage) {
+          await newPage.evaluateOnNewDocument(timeZoneScript(ipInfo.timeZone));
+          await newPage.waitForNavigation({ waitUntil: 'networkidle0' });
+          if (!settings.useLocalChrome) {
+            await modifyPageInfo(windowId, newPage, ipInfo);
+            // 进行时区泄露检查
+            const checkResult = await checkTimeZoneLeak(newPage, ipInfo.timeZone);
+            if (!checkResult.success) {
+              logger.warn(`窗口 ${windowId} 存在时区泄露:`, checkResult.issues);
+              bridgeMessageToUI({
+                type: 'warning',
+                text: `检测到时区泄露: ${(checkResult.issues || []).join(', ')}`,
+              });
+            }
+          }
         }
       }
     });
     const pages = await browser.pages();
     const page =
       pages.length &&
-      (pages?.[0]?.url() === 'about:blank' ||
-        !pages?.[0]?.url() ||
-        pages?.[0]?.url() === 'chrome://new-tab-page/')
+        (pages?.[0]?.url() === 'about:blank' ||
+          !pages?.[0]?.url() ||
+          pages?.[0]?.url() === 'chrome://new-tab-page/')
         ? pages?.[0]
         : await browser.newPage();
-    try {
-      if (!settings.useLocalChrome) {
-        await modifyPageInfo(windowId, page, ipInfo);
-      }
-      if (getClientPort() && openStartPage) {
-        await page.goto(
-          `http://localhost:${getClientPort()}/#/start?windowId=${windowId}&serverPort=${getPort()}`,
-        );
-      }
-
-    } catch (error) {
-      logger.error(error);
+    await page.evaluateOnNewDocument(timeZoneScript(ipInfo.timeZone));
+    if (ipInfo?.timeZone) {
+      await modifyPageInfo(windowId, page, ipInfo);
+    }
+    if (getClientPort() && openStartPage) {
+      await page.goto(
+        `http://localhost:${getClientPort()}/#/start?windowId=${windowId}&serverPort=${getPort()}`,
+      );
     }
     return data;
   }
@@ -129,23 +140,13 @@ export async function openFingerprintWindow(id: number, headless = false) {
     );
     const driverPath = getDriverPath();
 
-    let ipInfo = {timeZone: '', ip: '', ll: [], country: ''};
+    let ipInfo = { timeZone: '', ip: '', ll: [], country: '', lang: '' };
     if (windowData.proxy_id && proxyData.ip) {
       ipInfo = await getProxyInfo(proxyData);
+      ipInfo.lang = ipInfo.lang || getLangByCountry(ipInfo.country) || 'en-US';
       if (!ipInfo?.ip) {
         logger.error('ipInfo is empty');
       }
-    }
-
-    const fingerprint =
-      windowData.fingerprint && windowData.fingerprint !== '{}'
-        ? JSON.parse(windowData.fingerprint)
-        : randomFingerprint();
-    if (!windowData.fingerprint || windowData.fingerprint === '{}') {
-      await WindowDB.update(id, {
-        ...windowData,
-        fingerprint,
-      });
     }
 
     if (driverPath) {
@@ -161,32 +162,27 @@ export async function openFingerprintWindow(id: number, headless = false) {
         finalProxy = proxyInstance.proxyUrl;
         proxyServer = proxyInstance.proxyServer;
       }
-      const launchParamter = [
-        `--extended-parameters=${btoa(JSON.stringify(fingerprint))}`,
-        '--force-color-profile=srgb',
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--metrics-recording-only',
-        '--disable-background-mode',
-        `--remote-debugging-port=${chromePort}`,
-        `--user-data-dir=${windowDataDir}`,
-        // `--user-agent=${fingerprint?.ua}`,
-        '--unhandled-rejections=strict',
-        // below is for debug
-        // '--enable-logging',
-        // '--v=1',
-        // '--enable-blink-features=IdleDetection',
-        // '--no-sandbox',
-        // '--disable-setuid-sandbox',
-        // '--auto-open-devtools-for-tabs',
-      ];
+      const launchOptions = async () => {
+        return [
+          '--force-color-profile=srgb',
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--metrics-recording-only',
+          '--disable-background-mode',
+          `--remote-debugging-port=${chromePort}`,
+          `--user-data-dir=${windowDataDir}`,
+          `--kfingerprint=${JSON.stringify(generateRandomFingerprint(ipInfo))}`,
+        ];
+      };
+
+      const launchParamter = await launchOptions();
 
       if (finalProxy) {
         launchParamter.push(`--proxy-server=${finalProxy}`);
       }
-      if (ipInfo?.timeZone && !settings.useLocalChrome) {
-        launchParamter.push(`--timezone=${ipInfo.timeZone}`);
-        launchParamter.push(`--tz=${ipInfo.timeZone}`);
+      if (ipInfo?.timeZone) {
+        launchParamter.push(`--lang=${ipInfo.lang}`);
+        launchParamter.push(`--timezone=${ipInfo?.timeZone || 'America/Los_Angeles'}`);
       }
       if (headless) {
         launchParamter.push('--headless');
@@ -309,7 +305,7 @@ async function createSocksProxy(proxyData: DB.Proxy) {
 }
 
 export async function resetWindowStatus(id: number) {
-  await WindowDB.update(id, {status: 1, port: undefined});
+  await WindowDB.update(id, { status: 1, port: undefined });
 }
 
 export async function closeFingerprintWindow(id: number, force = false) {
@@ -320,14 +316,14 @@ export async function closeFingerprintWindow(id: number, force = false) {
     if (force && port) {
       try {
         const browserURL = `http://${HOST}:${port}`;
-        const browser = await puppeteer.connect({browserURL, defaultViewport: null});
+        const browser = await puppeteer.connect({ browserURL, defaultViewport: null });
         logger.info('close browser', browserURL);
         await browser?.close();
       } catch (error) {
         logger.error(error);
       }
     }
-    await WindowDB.update(id, {status: 1, port: undefined});
+    await WindowDB.update(id, { status: 1, port: undefined });
     const win = getMainWindow();
     if (win) {
       win.webContents.send('window-closed', id);

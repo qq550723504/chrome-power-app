@@ -1,7 +1,7 @@
 {
-  "name": "chrome-power",
+  "name": "wnd-fingerprint",
   "description": "The first open source fingerprint browser.",
-  "version": "1.1.4",
+  "version": "1.1.6",
   "private": true,
   "author": {
     "email": "zmzimpl@gmail.com",

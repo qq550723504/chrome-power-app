@@ -3,4 +3,5 @@ export interface IP {
   country: string;
   ll: number[];
   timeZone: string;
+  lang: string;
 }

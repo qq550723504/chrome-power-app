@@ -1,0 +1,18 @@
+0 verbose cli C:\Program Files\nodejs\node.exe C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js
+1 info using npm@10.9.0
+2 info using node@v22.11.0
+3 silly config load:file:C:\Program Files\nodejs\node_modules\npm\npmrc
+4 silly config load:file:D:\workspaces\chrome-power-app\.npmrc
+5 silly config load:file:C:\Users\EDY\.npmrc
+6 silly config load:file:C:\Users\EDY\AppData\Roaming\npm\etc\npmrc
+7 verbose title npm run
+8 verbose argv "run" "--cache" "--fix"
+9 verbose logfile logs-max:10 dir:D:\workspaces\chrome-power-app\--fix\_logs\2024-11-16T09_58_17_412Z-
+10 verbose logfile D:\workspaces\chrome-power-app\--fix\_logs\2024-11-16T09_58_17_412Z-debug-0.log
+11 silly logfile done cleaning log files
+12 verbose cwd D:\workspaces\chrome-power-app
+13 verbose os Windows_NT 10.0.22621
+14 verbose node v22.11.0
+15 verbose npm  v10.9.0
+16 verbose exit 0
+17 info ok

@@ -35,7 +35,7 @@ export const startGroupControl = async (masterProcessId?: number, slaveProcessId
       screenRecordingPermission: true,
     });
     const chromeWindows = windows.filter((f: {title: string}) =>
-      f.title.includes('By ChromePower'),
+      f.title.includes('By WND'),
     );
     master = chromeWindows[0].owner.processId;
     slaves = chromeWindows

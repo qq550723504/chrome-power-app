@@ -97,7 +97,7 @@ export default function Header() {
           className="title"
           level={3}
         >
-          ChromePower
+          WND Fingerprint
         </Title>
       </div>
       <div className="draggable draggable-bar"></div>
