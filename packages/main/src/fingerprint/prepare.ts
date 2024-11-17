@@ -177,7 +177,6 @@ export async function testProxy(proxy: DB.Proxy) {
       }
     } catch (error) {
       const axiosError = error as AxiosError;
-      console.log('$$$axiosError', axiosError);
       logger.error(`ping ${pin.name} failed:`, {
         message: axiosError.message,
         code: axiosError.code,

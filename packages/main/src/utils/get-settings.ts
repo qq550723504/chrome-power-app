@@ -7,7 +7,7 @@ export const getSettings = (): SettingOptions => {
   const configFilePath = join(process.resourcesPath, 'chrome-power-config.json');
   let settings = {
     profileCachePath: join(getRootDir(), 'chromePowerCache'),
-    useLocalChrome: true,
+    useLocalChrome: false,
     localChromePath: '',
     chromiumBinPath: '',
     automationConnect: false,

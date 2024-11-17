@@ -139,36 +139,56 @@ export const modifyPageInfo = async (windowId: number, page: Page, ipInfo: IP) =
 };
 
 // 修改时区脚本，使用动态时区
-export const timeZoneScript = (timezone: string) => `
-Object.defineProperty(Intl, 'DateTimeFormat', {
-    get: function() {
-        return function(...args) {
-            return new Date().toLocaleString('en-US', {timeZone: '${timezone}'});
-        }
-    }
-});
+export const timeZoneScript = (timezone: string) => {
+  if (!timezone) {
+    console.error('时区参数无效');
+    return '';
+  }
 
-const _Date = Date;
-Date = class extends _Date {
-    constructor(...args) {
+  return `
+  (function() {
+    const originalDate = Date;
+    const originalDateTimeFormat = Intl.DateTimeFormat;
+
+    // 重写 Intl.DateTimeFormat
+    Intl.DateTimeFormat = function(...args) {
+      const instance = new originalDateTimeFormat(...args);
+      
+      // 添加 resolvedOptions 方法
+      instance.resolvedOptions = function() {
+        return {
+          ...new originalDateTimeFormat().resolvedOptions(),
+          timeZone: '${timezone}'
+        };
+      };
+      
+      return instance;
+    };
+
+    // 保持原型链
+    Intl.DateTimeFormat.prototype = originalDateTimeFormat.prototype;
+
+    Date = class extends originalDate {
+      constructor(...args) {
         if (args.length === 0) {
-            super();
+          super();
         } else {
-            super(...args);
+          super(...args);
         }
+      }
+
+      getTimezoneOffset() {
+        const date = new originalDate();
+        const timeString = date.toLocaleString('en-US', { timeZone: '${timezone}' });
+        const localTime = new originalDate(timeString);
+        const utcTime = new originalDate(date.toLocaleString('en-US', { timeZone: 'UTC' }));
+        return -(localTime - utcTime) / (60 * 1000);
+      }
     }
-}
 
-// 获取时区偏移
-const getTimezoneOffset = () => {
-    const date = new Date();
-    const timeString = date.toLocaleString('en-US', { timeZone: '${timezone}' });
-    const localTime = new Date(timeString);
-    const utcTime = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
-    return (localTime - utcTime) / (3600 * 1000);
+    const offset = new Date().getTimezoneOffset() * 60 * 1000;
+    Date.prototype = originalDate.prototype;
+    Date.now = () => new originalDate().getTime() - offset;
+  })();
+  `;
 };
-
-const offset = getTimezoneOffset();
-Date.prototype = _Date.prototype;
-Date.now = () => new _Date().getTime() + offset * 3600 * 1000;
-`;
